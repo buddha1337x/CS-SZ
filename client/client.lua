@@ -3,9 +3,20 @@ QBCore = exports['qb-core']:GetCoreObject()
 
 local safezones = {}  -- Synced safezones from the server
 
---[[-------------------------------------------------------------------------
-    SAFEZONE CREATION MODE VARIABLES
----------------------------------------------------------------------------]]
+--------------------------------------
+-- SAFEZONE UI CONTROL
+--------------------------------------
+local safezoneActive = false
+function setSafezoneUI(state)
+    if state ~= safezoneActive then
+        safezoneActive = state
+        SendNUIMessage({ action = state and "show" or "hide" })
+    end
+end
+
+--------------------------------------
+-- SAFEZONE CREATION MODE VARIABLES
+--------------------------------------
 local creationMode = false
 local safezonePoints = {}  -- Array of vector3 for each marked point
 
@@ -47,7 +58,7 @@ function toggleFreecam()
     end
 end
 
--- Freecam movement and rotation handling
+-- Freecam movement & rotation with pitch clamping
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
@@ -55,12 +66,14 @@ Citizen.CreateThread(function()
             local camCoords = GetCamCoord(freecamEntity)
             local camRot = GetCamRot(freecamEntity, 2)
             local direction = RotationToDirection(camRot)
-
             local horizontalMove = GetControlNormal(0, 1) * speed
             local verticalMove = GetControlNormal(0, 2) * speed
 
             if horizontalMove ~= 0.0 or verticalMove ~= 0.0 then
-                SetCamRot(freecamEntity, camRot.x - verticalMove * mouseSensitivity, camRot.y, camRot.z - horizontalMove * mouseSensitivity)
+                local newPitch = camRot.x - verticalMove * mouseSensitivity
+                newPitch = math.max(math.min(newPitch, 89.0), -89.0)
+                local newRoll = camRot.z - horizontalMove * mouseSensitivity
+                SetCamRot(freecamEntity, newPitch, camRot.y, newRoll, 2)
             end
 
             local shift = IsDisabledControlPressed(0, 21)
@@ -90,7 +103,7 @@ Citizen.CreateThread(function()
     end
 end)
 
--- Draw a preview rectangle where the freecam is pointing.
+-- Draw a preview rectangle (with a dot) at the freecam hit location.
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
@@ -102,7 +115,7 @@ Citizen.CreateThread(function()
             local rayHandle = StartShapeTestRay(camCoords.x, camCoords.y, camCoords.z, rayEnd.x, rayEnd.y, rayEnd.z, -1, PlayerPedId(), 0)
             local _, hit, endCoords = GetShapeTestResult(rayHandle)
             if hit == 1 then
-                -- Define rectangle size
+                local col = { r = 0, g = 255, b = 0, a = 200 }
                 local rectWidth = 2.0
                 local rectLength = 4.0
                 local forward = direction
@@ -112,18 +125,18 @@ Citizen.CreateThread(function()
                 local corner2 = center - right * (rectWidth / 2) - forward * (rectLength / 2)
                 local corner3 = center - right * (rectWidth / 2) + forward * (rectLength / 2)
                 local corner4 = center + right * (rectWidth / 2) + forward * (rectLength / 2)
-                local col = { r = 0, g = 255, b = 0, a = 200 }
                 DrawLine(corner1.x, corner1.y, corner1.z, corner2.x, corner2.y, corner2.z, col.r, col.g, col.b, col.a)
                 DrawLine(corner2.x, corner2.y, corner2.z, corner3.x, corner3.y, corner3.z, col.r, col.g, col.b, col.a)
                 DrawLine(corner3.x, corner3.y, corner3.z, corner4.x, corner4.y, corner4.z, col.r, col.g, col.b, col.a)
                 DrawLine(corner4.x, corner4.y, corner4.z, corner1.x, corner1.y, corner1.z, col.r, col.g, col.b, col.a)
+                DrawMarker(1, center.x, center.y, center.z, 0, 0, 0, 0, 0, 0, 0.3, 0.3, 0.3, 0, 255, 0, 255, false, false, 2, nil, nil, false)
             end
         end
     end
 end)
 
 --------------------------------------
--- UTILITY: Draw Text on Screen
+-- UTILITY: Draw Text on Screen (fallback)
 --------------------------------------
 function DrawTxt(x, y, text, scale)
     SetTextFont(0)
@@ -158,7 +171,7 @@ function StartSafezoneCreationMode()
         if not freecamEnabled then
             toggleFreecam()  -- Enable freecam automatically
         end
-        QBCore.Functions.Notify("Safezone creation mode started. Press ~g~G~w~ to mark a point. Press ~g~ENTER~w~ to confirm.", "info")
+        QBCore.Functions.Notify("Safezone creation mode started. Press ~g~G~w~ to mark points, ~g~ENTER~w~ to confirm.", "info")
     end)
 end
 
@@ -170,20 +183,19 @@ function EndSafezoneCreationMode()
     end
 end
 
--- Thread for safezone creation input & drawing markers for each marked point.
+-- Thread for safezone creation: marking points and confirming
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
         if creationMode then
             DrawTxt(0.35, 0.90, "Safezone Creation Mode: Press ~g~G~w~ to mark a point, ~g~ENTER~w~ to confirm.", 0.45)
-
-            -- Draw each marked point: a red dot with a vertical line (10 units tall)
+            -- Draw markers for each saved point: a red dot with a vertical wall
             for _, point in ipairs(safezonePoints) do
                 DrawMarker(1, point.x, point.y, point.z, 0,0,0, 0,0,0, 0.2,0.2,0.2, 255,0,0,255, false, false, 2, nil, nil, false)
-                DrawLine(point.x, point.y, point.z, point.x, point.y, point.z + 10.0, 255, 0, 0, 255)
+                DrawLine(point.x, point.y, point.z, point.x, point.y, point.z + Config.SafezoneWallHeight, 255, 0, 0, 255)
             end
 
-            -- Press G to add a point (using freecam's current hit position if available)
+            -- Press G to mark a point (using freecam's hit position if available)
             if IsControlJustReleased(0, 47) then  -- G key
                 local markPos = nil
                 if freecamEnabled and freecamEntity then
@@ -204,12 +216,11 @@ Citizen.CreateThread(function()
                 QBCore.Functions.Notify("Point " .. #safezonePoints .. " marked.", "success")
             end
 
-            -- Press ENTER to confirm safezone creation (ENTER key code: 191)
+            -- Press ENTER (key code 191) to confirm safezone creation.
             if IsControlJustReleased(0, 191) then
                 if #safezonePoints < 2 then
                     QBCore.Functions.Notify("Need at least two points to create a safezone.", "error")
                 else
-                    -- Calculate average Z for safezone height
                     local totalZ = 0.0
                     for _, pt in ipairs(safezonePoints) do
                         totalZ = totalZ + pt.z
@@ -229,24 +240,48 @@ Citizen.CreateThread(function()
 end)
 
 --------------------------------------
--- POINT-IN-POLYGON UTILITY (2D, using ray-casting algorithm)
+-- DRAW SAFEZONE OUTLINES & WALLS (ADMIN ONLY, toggled with /safezones)
 --------------------------------------
-function IsPointInPolygon2D(point, poly)
-    local inside = false
-    local j = #poly
-    for i = 1, #poly do
-        local xi, yi = poly[i].x, poly[i].y
-        local xj, yj = poly[j].x, poly[j].y
-        if ((yi > point.y) ~= (yj > point.y)) and (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi) then
-            inside = not inside
+local showSafezoneOutlines = false
+RegisterCommand("safezones", function()
+    if IsPlayerAceAllowed("CS-SZ") then
+        showSafezoneOutlines = not showSafezoneOutlines
+        if showSafezoneOutlines then
+            QBCore.Functions.Notify("Safezone outlines enabled.", "success")
+        else
+            QBCore.Functions.Notify("Safezone outlines disabled.", "error")
         end
-        j = i
+    else
+        QBCore.Functions.Notify("You do not have permission to view safezone outlines.", "error")
     end
-    return inside
-end
+end, false)
+
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(0)
+        if showSafezoneOutlines then
+            for _, zone in ipairs(safezones) do
+                if zone.points then
+                    for i = 1, #zone.points do
+                        local pt1 = zone.points[i]
+                        local pt2 = zone.points[(i % #zone.points) + 1]
+                        DrawLine(pt1.x, pt1.y, pt1.z, pt2.x, pt2.y, pt2.z, Config.SafezoneMarkerColor.r, Config.SafezoneMarkerColor.g, Config.SafezoneMarkerColor.b, Config.SafezoneMarkerColor.a)
+                        local bottomA = vector3(pt1.x, pt1.y, pt1.z)
+                        local bottomB = vector3(pt2.x, pt2.y, pt2.z)
+                        local topA = vector3(pt1.x, pt1.y, pt1.z + Config.SafezoneWallHeight)
+                        local topB = vector3(pt2.x, pt2.y, pt2.z + Config.SafezoneWallHeight)
+                        local col = Config.SafezoneWallColor
+                        DrawPoly(bottomA, bottomB, topA, col.r, col.g, col.b, col.a)
+                        DrawPoly(topA, bottomB, topB, col.r, col.g, col.b, col.a)
+                    end
+                end
+            end
+        end
+    end
+end)
 
 --------------------------------------
--- ADMIN COMMANDS
+-- ADMIN COMMANDS (for creation & deletion)
 --------------------------------------
 RegisterCommand(Config.AdminCommand, function()
     StartSafezoneCreationMode()
@@ -260,21 +295,17 @@ RegisterCommand(Config.AdminDeleteCommand, function()
         end
         local playerPos = GetEntityCoords(PlayerPedId())
         local nearestZone = nil
-        local nearestDistance = 9999.0
         for _, zone in ipairs(safezones) do
             if zone.points then
-                -- Use point-in-polygon for horizontal check
                 if IsPointInPolygon2D({x = playerPos.x, y = playerPos.y}, zone.points) and math.abs(playerPos.z - zone.z) <= Config.SafezoneZRange then
                     nearestZone = zone
                     break
                 end
             else
-                -- Fallback: rectangular safezone check (if only two points were provided)
                 local centerX = (zone.minX + zone.maxX) / 2
                 local centerY = (zone.minY + zone.maxY) / 2
                 local dist = #(vector2(centerX, centerY) - vector2(playerPos.x, playerPos.y))
-                if dist < nearestDistance then
-                    nearestDistance = dist
+                if dist < 50.0 then
                     nearestZone = zone
                 end
             end
@@ -288,7 +319,7 @@ RegisterCommand(Config.AdminDeleteCommand, function()
 end, false)
 
 --------------------------------------
--- Sync Safezones from Server
+-- SYNC SAFEZONES FROM SERVER
 --------------------------------------
 RegisterNetEvent("cs_sz:sync")
 AddEventHandler("cs_sz:sync", function(safezoneData)
@@ -317,8 +348,8 @@ Citizen.CreateThread(function()
                 end
             end
         end
+        setSafezoneUI(inZone)
         if inZone then
-            DrawTxt(0.45, 0.8, Config.SafezoneMessage, 0.7)
             if Config.SafezoneWeaponDisable then
                 DisablePlayerFiring(playerPed, true)
             end
@@ -338,32 +369,18 @@ Citizen.CreateThread(function()
 end)
 
 --------------------------------------
--- DRAW SAFEZONE MARKERS (for created safezones)
+-- POINT-IN-POLYGON UTILITY (2D ray-casting algorithm)
 --------------------------------------
-Citizen.CreateThread(function()
-    while true do
-        Citizen.Wait(0)
-        if Config.SafezoneDisplayMarker then
-            for _, zone in ipairs(safezones) do
-                if zone.points then
-                    for i = 1, #zone.points do
-                        local pt1 = zone.points[i]
-                        local pt2 = zone.points[(i % #zone.points) + 1]
-                        DrawLine(pt1.x, pt1.y, pt1.z, pt2.x, pt2.y, pt2.z, Config.SafezoneMarkerColor.r, Config.SafezoneMarkerColor.g, Config.SafezoneMarkerColor.b, Config.SafezoneMarkerColor.a)
-                    end
-                else
-                    local z = zone.z - 1.0
-                    local corner1 = vector3(zone.minX, zone.minY, z)
-                    local corner2 = vector3(zone.maxX, zone.minY, z)
-                    local corner3 = vector3(zone.maxX, zone.maxY, z)
-                    local corner4 = vector3(zone.minX, zone.maxY, z)
-                    local col = Config.SafezoneMarkerColor
-                    DrawLine(corner1.x, corner1.y, corner1.z, corner2.x, corner2.y, corner2.z, col.r, col.g, col.b, col.a)
-                    DrawLine(corner2.x, corner2.y, corner2.z, corner3.x, corner3.y, corner3.z, col.r, col.g, col.b, col.a)
-                    DrawLine(corner3.x, corner3.y, corner3.z, corner4.x, corner4.y, corner4.z, col.r, col.g, col.b, col.a)
-                    DrawLine(corner4.x, corner4.y, corner4.z, corner1.x, corner1.y, corner1.z, col.r, col.g, col.b, col.a)
-                end
-            end
+function IsPointInPolygon2D(point, poly)
+    local inside = false
+    local j = #poly
+    for i = 1, #poly do
+        local xi, yi = poly[i].x, poly[i].y
+        local xj, yj = poly[j].x, poly[j].y
+        if ((yi > point.y) ~= (yj > point.y)) and (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi) then
+            inside = not inside
         end
+        j = i
     end
-end)
+    return inside
+end
