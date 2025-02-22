@@ -1,0 +1,33 @@
+/* Reset basic margins and transparent background */
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Safezone overlay styling */
+#safezoneOverlay {
+    position: fixed;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.65);
+    padding: 30px 40px;
+    border-radius: 10px;
+    box-shadow: 0px 0px 15px rgba(0,0,0,0.5);
+}
+
+/* Safezone message styling */
+#safezoneOverlay .message {
+    font-size: 40px;
+    color: #39FF14;
+    text-align: center;
+}
+
+/* Hide element by default */
+.hidden {
+    display: none;
+}
