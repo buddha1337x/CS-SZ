@@ -7,24 +7,45 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Safezone overlay styling */
+/* Safezone overlay styling: smaller & positioned at the top */
 #safezoneOverlay {
     position: fixed;
-    top: 30%;
+    top: 10%; /* Position at the top of the screen */
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, 0);
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.65);
-    padding: 30px 40px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.65));
+    padding: 20px 30px;
     border-radius: 10px;
-    box-shadow: 0px 0px 15px rgba(0,0,0,0.5);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.7);
+    animation: pulseGlow 2s infinite alternate;
 }
 
-/* Safezone message styling */
+/* Pulsing glow animation */
+@keyframes pulseGlow {
+    from {
+        box-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
+    }
+    to {
+        box-shadow: 0 0 15px rgba(57, 255, 20, 1);
+    }
+}
+
+/* Safezone message styling with flashing neon text effect */
 #safezoneOverlay .message {
-    font-size: 40px;
+    font-size: 32px;
     color: #39FF14;
     text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    animation: textFlash 3s infinite;
+}
+
+/* Text flash animation */
+@keyframes textFlash {
+    0% { text-shadow: 0 0 8px #39FF14, 0 0 16px #39FF14; }
+    50% { text-shadow: 0 0 16px #39FF14, 0 0 24px #39FF14; }
+    100% { text-shadow: 0 0 8px #39FF14, 0 0 16px #39FF14; }
 }
 
 /* Hide element by default */
