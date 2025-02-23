@@ -3,6 +3,19 @@ QBCore = exports['qb-core']:GetCoreObject()
 
 local safezones = {}  -- Synced safezones from the server
 
+
+
+
+Citizen.CreateThread(function()
+    Wait(1000) -- Wait one second to ensure client scripts are fully loaded
+    TriggerServerEvent("cs_sz:requestSync")
+end)
+
+
+
+
+
+
 --------------------------------------
 -- SAFEZONE UI CONTROL
 --------------------------------------
@@ -234,7 +247,7 @@ Citizen.CreateThread(function()
                     QBCore.Functions.Notify("Safezone created.", "success")
                     EndSafezoneCreationMode()
                 end
-            end
+            end            
         end
     end
 end)
