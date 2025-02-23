@@ -13,6 +13,7 @@ client_scripts {
 }
 
 server_scripts {
+    '@oxmysql/lib/MySQL.lua',
     'server/server.lua',
     'server/config.lua',
 }
@@ -22,4 +23,8 @@ files {
     'html/index.html',
     'html/style.css',
     'html/app.js',
+}
+
+dependencies {
+	'oxmysql',
 }
