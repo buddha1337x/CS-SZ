@@ -3,18 +3,10 @@ QBCore = exports['qb-core']:GetCoreObject()
 
 local safezones = {}  -- Synced safezones from the server
 
-
-
-
 Citizen.CreateThread(function()
     Wait(1000) -- Wait one second to ensure client scripts are fully loaded
     TriggerServerEvent("cs_sz:requestSync")
 end)
-
-
-
-
-
 
 --------------------------------------
 -- SAFEZONE UI CONTROL
@@ -365,10 +357,24 @@ Citizen.CreateThread(function()
         if inZone then
             if Config.SafezoneWeaponDisable then
                 DisablePlayerFiring(playerPed, true)
+                SetPlayerCanDoDriveBy(player, false)
+		        DisableControlAction(2, 37, true)
             end
             if Config.SafezoneMeleeDisable then
-                DisableControlAction(0, 24, true)
+                DisableControlAction(0, 106, true)
                 DisableControlAction(0, 25, true)
+		        DisableControlAction(0, 24, true)
+		        DisableControlAction(0, 69, true)
+		        DisableControlAction(0, 70, true)
+		        DisableControlAction(0, 92, true)
+		        DisableControlAction(0, 114, true)
+		        DisableControlAction(0, 257, true)
+		        DisableControlAction(0, 331, true)
+		        DisableControlAction(0, 68, true)
+		        DisableControlAction(0, 257, true)
+		        DisableControlAction(0, 263, true)
+		        DisableControlAction(0, 264, true)
+                SetCurrentPedWeapon(playerPed, GetHashKey("WEAPON_UNARMED"), true)
             end
             if IsPedInAnyVehicle(playerPed, false) then
                 local veh = GetVehiclePedIsIn(playerPed, false)
