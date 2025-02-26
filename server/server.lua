@@ -25,7 +25,6 @@ end
 -- Utility function to load safezones from SQL
 local function loadSafezonesFromSQL(cb)
     MySQL.Async.fetchAll("SELECT * FROM safezones", {}, function(result)
-        print("SQL fetch result: " .. json.encode(result))
         local safezones = {}
         for i = 1, #result do
             local zone = result[i]
@@ -44,7 +43,6 @@ AddEventHandler('onResourceStart', function(resource)
     if resource == GetCurrentResourceName() then
         loadSafezonesFromSQL(function(safezones)
             TriggerClientEvent("cs_sz:sync", -1, safezones)
-            print("Safezones loaded from SQL: " .. #safezones .. " zones")
         end)
     end
 end)
@@ -75,7 +73,6 @@ AddEventHandler("cs_sz:create", function(safezoneData)
     local pointsStr = serializePoints(safezoneData.points)
     local dataStr = tostring(safezoneData.z)
 
-    print("Inserting safezone with points: " .. pointsStr .. " and data: " .. dataStr)
     MySQL.Async.execute(
         "INSERT INTO safezones (points, data) VALUES (@points, @data)",
         {
@@ -83,7 +80,6 @@ AddEventHandler("cs_sz:create", function(safezoneData)
             ["@data"] = dataStr
         },
         function(rowsChanged)
-            print("Rows changed after insert: " .. tostring(rowsChanged))
             loadSafezonesFromSQL(function(safezones)
                 TriggerClientEvent("cs_sz:sync", -1, safezones)
                 TriggerClientEvent("QBCore:Notify", src, "Safezone created.", "success")
