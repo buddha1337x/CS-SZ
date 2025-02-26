@@ -7,9 +7,10 @@ lua54 'yes'
 
 ui_page 'html/index.html'
 
+shared_script 'client/config.lua'
+
 client_scripts {
-    'client/config.lua',
-    'client/client.lua',
+    'client/*.lua',
 }
 
 server_scripts {
@@ -20,9 +21,7 @@ server_scripts {
 
 
 files {
-    'html/index.html',
-    'html/style.css',
-    'html/app.js',
+    'html/*.*'
 }
 
 dependencies {
