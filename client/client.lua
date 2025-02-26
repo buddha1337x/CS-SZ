@@ -9,6 +9,17 @@ Citizen.CreateThread(function()
 end)
 
 --------------------------------------
+-- PLAY NOTIFICATION SOUND FUNCTION
+--------------------------------------
+function PlayNotificationSound()
+    SendNUIMessage({
+        action = "playSound",
+        soundFile = "html/notification.ogg", -- Path to your MP3 file within your resource
+        volume = 0.5
+    })
+end
+
+--------------------------------------
 -- SAFEZONE UI CONTROL
 --------------------------------------
 local safezoneActive = false
@@ -218,7 +229,7 @@ Citizen.CreateThread(function()
                     markPos = GetEntityCoords(PlayerPedId())
                 end
                 table.insert(safezonePoints, markPos)
-                QBCore.Functions.Notify("Point " .. #safezonePoints .. " marked.", "success")
+                PlaySoundFrontend(-1, "CONFIRM_BEEP", "HUD_MINI_GAME_SOUNDSET", false)
             end
 
             -- Press ENTER (key code 191) to confirm safezone creation.
@@ -237,6 +248,7 @@ Citizen.CreateThread(function()
                     }
                     TriggerServerEvent("cs_sz:create", safezoneData)
                     QBCore.Functions.Notify("Safezone created.", "success")
+                    PlayNotificationSound()
                     EndSafezoneCreationMode()
                 end
             end            
