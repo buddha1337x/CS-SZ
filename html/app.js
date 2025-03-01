@@ -1,9 +1,19 @@
 window.addEventListener('message', function(event) {
     const data = event.data;
-    const overlay = document.getElementById("safezoneOverlay");
+    const safezoneOverlay = document.getElementById("safezoneOverlay");
+    const creationModeOverlay = document.getElementById("creationModeOverlay");
+
     if (data.action === "show") {
-        overlay.classList.remove("hidden");
+        safezoneOverlay.classList.remove("hidden");
     } else if (data.action === "hide") {
-        overlay.classList.add("hidden");
+        safezoneOverlay.classList.add("hidden");
+    } else if (data.action === "showCreationMode") {
+        creationModeOverlay.querySelector(".message").innerHTML = data.text;
+        creationModeOverlay.classList.remove("hidden");
+    } else if (data.action === "hideCreationMode") {
+        creationModeOverlay.classList.add("hidden");
+    } else if (data.action === "updateCreationModeText") {
+        // Update the text without toggling visibility.
+        creationModeOverlay.querySelector(".message").innerHTML = data.text;
     }
 });
