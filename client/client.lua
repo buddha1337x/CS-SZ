@@ -9,14 +9,57 @@ Citizen.CreateThread(function()
 end)
 
 --------------------------------------
--- PLAY NOTIFICATION SOUND FUNCTION
+-- CONVEX HULL UTILITY FUNCTIONS
 --------------------------------------
-function PlayNotificationSound()
-    SendNUIMessage({
-        action = "playSound",
-        soundFile = "html/notification.ogg", -- Path to your MP3 file within your resource
-        volume = 0.5
-    })
+local function cross(o, a, b)
+    return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+end
+
+local function ConvexHull(points)
+    local n = #points
+    if n <= 1 then 
+        return points 
+    end
+
+    local pts = {}
+    for i = 1, n do
+        pts[i] = points[i]
+    end
+
+    table.sort(pts, function(a, b)
+        if a.x == b.x then
+            return a.y < b.y
+        else
+            return a.x < b.x
+        end
+    end)
+
+    local lower = {}
+    for i, p in ipairs(pts) do
+        while #lower >= 2 and cross(lower[#lower - 1], lower[#lower], p) <= 0 do
+            table.remove(lower)
+        end
+        table.insert(lower, p)
+    end
+
+    local upper = {}
+    for i = #pts, 1, -1 do
+        local p = pts[i]
+        while #upper >= 2 and cross(upper[#upper - 1], upper[#upper], p) <= 0 do
+            table.remove(upper)
+        end
+        table.insert(upper, p)
+    end
+
+    -- Remove duplicate endpoints
+    table.remove(lower)
+    table.remove(upper)
+
+    for i, p in ipairs(upper) do
+        table.insert(lower, p)
+    end
+
+    return lower
 end
 
 --------------------------------------
@@ -34,15 +77,19 @@ end
 -- SAFEZONE CREATION MODE VARIABLES
 --------------------------------------
 local creationMode = false
-local safezonePoints = {}  -- Array of vector3 for each marked point
+local safezonePoints = {}  -- Current safezone boundary points (possibly auto-simplified)
+local pointHistory = {}    -- History of points in insertion order
+
+-- Whether to auto-simplify the safezone points (via convex hull)
+local autoSimplify = true
 
 --------------------------------------
 -- FREECAM VARIABLES & FUNCTIONS
 --------------------------------------
 local freecamEnabled = false
 local freecamEntity = nil
-local speed = 1.2
-local shiftSpeed = 4.0
+local speed = 1.2        -- base speed for freecam movement
+local shiftSpeed = speed * 3.33  -- shift multiplier (approx from original values)
 local mouseSensitivity = 5.0
 
 function RotationToDirection(rot)
@@ -58,7 +105,8 @@ function toggleFreecam()
     if freecamEnabled then
         local gameplayCamCoords = GetGameplayCamCoord()
         local gameplayCamRot = GetGameplayCamRot()
-        freecamEntity = CreateCamWithParams("DEFAULT_SCRIPTED_CAMERA", gameplayCamCoords.x, gameplayCamCoords.y, gameplayCamCoords.z, gameplayCamRot.x, gameplayCamRot.y, gameplayCamRot.z, 70.0)
+        freecamEntity = CreateCamWithParams("DEFAULT_SCRIPTED_CAMERA", gameplayCamCoords.x, gameplayCamCoords.y, gameplayCamCoords.z,
+            gameplayCamRot.x, gameplayCamRot.y, gameplayCamRot.z, 70.0)
         SetCamActive(freecamEntity, true)
         RenderScriptCams(true, true, 200, false, false)
         TaskStandStill(playerPed, -1)
@@ -74,7 +122,7 @@ function toggleFreecam()
     end
 end
 
--- Freecam movement & rotation with pitch clamping
+-- Freecam movement, including scroll wheel speed adjustment
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
@@ -82,6 +130,17 @@ Citizen.CreateThread(function()
             local camCoords = GetCamCoord(freecamEntity)
             local camRot = GetCamRot(freecamEntity, 2)
             local direction = RotationToDirection(camRot)
+            
+            -- Adjust speed with mouse wheel (scroll up: 241, scroll down: 242)
+            if IsControlJustPressed(0, 241) then
+                speed = math.min(speed + 0.1, 10.0)
+                shiftSpeed = speed * 3.33
+            end
+            if IsControlJustPressed(0, 242) then
+                speed = math.max(speed - 0.1, 0.1)
+                shiftSpeed = speed * 3.33
+            end
+
             local horizontalMove = GetControlNormal(0, 1) * speed
             local verticalMove = GetControlNormal(0, 2) * speed
 
@@ -119,11 +178,12 @@ Citizen.CreateThread(function()
     end
 end)
 
--- Draw a preview rectangle (with a dot) at the freecam hit location.
+-- Display freecam speed in the top right corner when freecam is active.
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
         if freecamEnabled and freecamEntity then
+            DrawTxt(0.85, 0.05, "Speed: " .. string.format("%.1f", speed), 0.4)
             local camCoords = GetCamCoord(freecamEntity)
             local camRot = GetCamRot(freecamEntity, 2)
             local direction = RotationToDirection(camRot)
@@ -141,11 +201,7 @@ Citizen.CreateThread(function()
                 local corner2 = center - right * (rectWidth / 2) - forward * (rectLength / 2)
                 local corner3 = center - right * (rectWidth / 2) + forward * (rectLength / 2)
                 local corner4 = center + right * (rectWidth / 2) + forward * (rectLength / 2)
-                DrawLine(corner1.x, corner1.y, corner1.z, corner2.x, corner2.y, corner2.z, col.r, col.g, col.b, col.a)
-                DrawLine(corner2.x, corner2.y, corner2.z, corner3.x, corner3.y, corner3.z, col.r, col.g, col.b, col.a)
-                DrawLine(corner3.x, corner3.y, corner3.z, corner4.x, corner4.y, corner4.z, col.r, col.g, col.b, col.a)
-                DrawLine(corner4.x, corner4.y, corner4.z, corner1.x, corner1.y, corner1.z, col.r, col.g, col.b, col.a)
-                DrawMarker(1, center.x, center.y, center.z, 0, 0, 0, 0, 0, 0, 0.3, 0.3, 0.3, 0, 255, 0, 255, false, false, 2, nil, nil, false)
+                DrawMarker(1, center.x, center.y, center.z, 0, 0, 0, 0, 0, 0, 0.15, 0.15, 0.15, 0, 255, 0, 255, false, false, 2, nil, nil, false)
             end
         end
     end
@@ -184,19 +240,30 @@ function StartSafezoneCreationMode()
         end
         creationMode = true
         safezonePoints = {}
+        pointHistory = {}  -- reset history on new creation
         if not freecamEnabled then
             toggleFreecam()  -- Enable freecam automatically
         end
-        QBCore.Functions.Notify("Safezone creation mode started. Press ~g~G~w~ to mark points, ~g~ENTER~w~ to confirm.", "info")
+        local initialText = "Safezone Creation Mode: Press <span style='color:green;'>G</span> to mark a point, " ..
+            "<span style='color:green;'>ENTER</span> to confirm, " ..
+            "<span style='color:green;'>H</span> to toggle Auto-Simplify (currently: " .. (autoSimplify and "Enabled" or "Disabled") .. "), " ..
+            "and <span style='color:green;'>U</span> to undo the last point."
+        QBCore.Functions.Notify("Safezone creation mode started.", "info")
+        SendNUIMessage({
+            action = "showCreationMode",
+            text = initialText
+        })
     end)
 end
 
 function EndSafezoneCreationMode()
     creationMode = false
     safezonePoints = {}
+    pointHistory = {}
     if freecamEnabled then
         toggleFreecam()  -- Disable freecam when done
     end
+    SendNUIMessage({ action = "hideCreationMode" })
 end
 
 -- Thread for safezone creation: marking points and confirming
@@ -204,15 +271,60 @@ Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
         if creationMode then
-            DrawTxt(0.35, 0.90, "Safezone Creation Mode: Press ~g~G~w~ to mark a point, ~g~ENTER~w~ to confirm.", 0.45)
-            -- Draw markers for each saved point: a red dot with a vertical wall
-            for _, point in ipairs(safezonePoints) do
-                DrawMarker(1, point.x, point.y, point.z, 0,0,0, 0,0,0, 0.2,0.2,0.2, 255,0,0,255, false, false, 2, nil, nil, false)
+            for i, point in ipairs(safezonePoints) do
+                DrawMarker(1, point.x, point.y, point.z, 0, 0, 0, 0, 0, 0, 0.2, 0.2, 0.2, 255, 0, 0, 255, false, false, 2, nil, nil, false)
                 DrawLine(point.x, point.y, point.z, point.x, point.y, point.z + Config.SafezoneWallHeight, 255, 0, 0, 255)
             end
 
-            -- Press G to mark a point (using freecam's hit position if available)
-            if IsControlJustReleased(0, 47) then  -- G key
+            if #safezonePoints >= 2 then
+                for i = 1, #safezonePoints do
+                    local p1 = safezonePoints[i]
+                    local nextIndex = (i % #safezonePoints) + 1
+                    local p2 = safezonePoints[nextIndex]
+
+                    local bottomA = vector3(p1.x, p1.y, p1.z)
+                    local bottomB = vector3(p2.x, p2.y, p2.z)
+                    local topA = vector3(p1.x, p1.y, p1.z + Config.SafezoneWallHeight)
+                    local topB = vector3(p2.x, p2.y, p2.z + Config.SafezoneWallHeight)
+
+                    DrawPoly(bottomA, bottomB, topA, 255, 0, 0, 200)
+                    DrawPoly(topA, bottomB, topB, 255, 0, 0, 200)
+                    DrawPoly(topA, bottomB, bottomA, 255, 0, 0, 200)
+                    DrawPoly(topB, bottomB, topA, 255, 0, 0, 200)
+                end
+            end
+
+            if IsControlJustReleased(0, 74) then  -- H key to toggle auto-simplification
+                autoSimplify = not autoSimplify
+                local stateText = autoSimplify and "Enabled" or "Disabled"
+                QBCore.Functions.Notify("Auto-Simplify is now " .. stateText, "info")
+                local updatedText = "Safezone Creation Mode: Press <span style='color:green;'>G</span> to mark a point, " ..
+                    "<span style='color:green;'>ENTER</span> to confirm, " ..
+                    "<span style='color:green;'>H</span> to toggle Auto-Simplify (currently: " .. stateText .. "), " ..
+                    "and <span style='color:green;'>U</span> to undo the last point."
+                SendNUIMessage({ action = "updateCreationModeText", text = updatedText })
+            end
+
+            if IsControlJustReleased(0, 303) then  -- U key to undo last point
+                if #pointHistory > 0 then
+                    table.remove(pointHistory)
+                    QBCore.Functions.Notify("Last point undone.", "info")
+                    if autoSimplify then
+                        safezonePoints = ConvexHull(pointHistory)
+                    else
+                        safezonePoints = pointHistory
+                    end
+                    local updatedText = "Safezone Creation Mode: Press <span style='color:green;'>G</span> to mark a point, " ..
+                        "<span style='color:green;'>ENTER</span> to confirm, " ..
+                        "<span style='color:green;'>H</span> to toggle Auto-Simplify (currently: " .. (autoSimplify and "Enabled" or "Disabled") .. "), " ..
+                        "and <span style='color:green;'>U</span> to undo the last point."
+                    SendNUIMessage({ action = "updateCreationModeText", text = updatedText })
+                else
+                    QBCore.Functions.Notify("No points to undo.", "error")
+                end
+            end
+
+            if IsControlJustReleased(0, 47) then  -- G key to mark a point
                 local markPos = nil
                 if freecamEnabled and freecamEntity then
                     local camCoords = GetCamCoord(freecamEntity)
@@ -228,13 +340,20 @@ Citizen.CreateThread(function()
                 if not markPos then
                     markPos = GetEntityCoords(PlayerPedId())
                 end
-                table.insert(safezonePoints, markPos)
+                table.insert(pointHistory, markPos)
+                if autoSimplify then
+                    safezonePoints = ConvexHull(pointHistory)
+                else
+                    safezonePoints = pointHistory
+                end
                 PlaySoundFrontend(-1, "CONFIRM_BEEP", "HUD_MINI_GAME_SOUNDSET", false)
             end
 
-            -- Press ENTER (key code 191) to confirm safezone creation.
-            if IsControlJustReleased(0, 191) then
-                if #safezonePoints < 2 then
+            if IsControlJustReleased(0, 191) then  -- ENTER key to confirm safezone creation.
+                if #safezonePoints == 0 then
+                    QBCore.Functions.Notify("No points created, exiting safezone creation mode.", "error")
+                    EndSafezoneCreationMode()
+                elseif #safezonePoints < 2 then
                     QBCore.Functions.Notify("Need at least two points to create a safezone.", "error")
                 else
                     local totalZ = 0.0
@@ -248,10 +367,10 @@ Citizen.CreateThread(function()
                     }
                     TriggerServerEvent("cs_sz:create", safezoneData)
                     QBCore.Functions.Notify("Safezone created.", "success")
-                    PlayNotificationSound()
+                    PlaySoundFrontend(-1, "Enter_1st", "GTAO_FM_Events_Soundset", false)
                     EndSafezoneCreationMode()
                 end
-            end            
+            end
         end
     end
 end)
@@ -370,22 +489,22 @@ Citizen.CreateThread(function()
             if Config.SafezoneWeaponDisable then
                 DisablePlayerFiring(playerPed, true)
                 SetPlayerCanDoDriveBy(player, false)
-		        DisableControlAction(2, 37, true)
+                DisableControlAction(2, 37, true)
             end
             if Config.SafezoneMeleeDisable then
                 DisableControlAction(0, 106, true)
                 DisableControlAction(0, 25, true)
-		        DisableControlAction(0, 24, true)
-		        DisableControlAction(0, 69, true)
-		        DisableControlAction(0, 70, true)
-		        DisableControlAction(0, 92, true)
-		        DisableControlAction(0, 114, true)
-		        DisableControlAction(0, 257, true)
-		        DisableControlAction(0, 331, true)
-		        DisableControlAction(0, 68, true)
-		        DisableControlAction(0, 257, true)
-		        DisableControlAction(0, 263, true)
-		        DisableControlAction(0, 264, true)
+                DisableControlAction(0, 24, true)
+                DisableControlAction(0, 69, true)
+                DisableControlAction(0, 70, true)
+                DisableControlAction(0, 92, true)
+                DisableControlAction(0, 114, true)
+                DisableControlAction(0, 257, true)
+                DisableControlAction(0, 331, true)
+                DisableControlAction(0, 68, true)
+                DisableControlAction(0, 257, true)
+                DisableControlAction(0, 263, true)
+                DisableControlAction(0, 264, true)
                 SetCurrentPedWeapon(playerPed, GetHashKey("WEAPON_UNARMED"), true)
             end
             if IsPedInAnyVehicle(playerPed, false) then
