@@ -82,7 +82,6 @@ AddEventHandler("cs_sz:create", function(safezoneData)
         function(rowsChanged)
             loadSafezonesFromSQL(function(safezones)
                 TriggerClientEvent("cs_sz:sync", -1, safezones)
-                TriggerClientEvent("QBCore:Notify", src, "Safezone created.", "success")
             end)
         end
     )
